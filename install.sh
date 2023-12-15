@@ -52,6 +52,8 @@ machine_info() {
 	esac
 
 	# more in4 on os: ram, storage
+	
+	ram=$(free -h | grep Mem | awk '{print $2}')
 }
 
 # shellcheck disable=SC2317
@@ -138,8 +140,10 @@ pprop() { oprop "product.$1"; }
 
 # shellcheck disable=SC2317
 verify_system() {
-	if [ -f "$1" ]; then
-		verify_system "$(loop_mount "$1")"
+	if [ ! -d "$1" ]; then
+		local flag
+		[ -f "$1" ] && flag=loop
+		verify_system "$(loop_mount "$1" "$flag")"
 		return $?
 	fi
 
@@ -172,10 +176,19 @@ check_folder() {
 	done
 
 	# check for available space
+	freespace=$(df -m "$1" | tail -1 | awk '{print $4}')
+	[ "$freespace" -ge 4096 ] ||
+		die "Not enough space to install gearlock to '$1'"
 }
 
 check_dev() {
-	echo
+	devtype=$(lsblk -dpnro type "$1")
+	case "$devtype" in
+	disk) ;;
+	Extended) ;;
+	part) check_folder "$(loop_mount "$1")" || 
+		die "Cannot process path '$1'" ;;
+	esac
 }
 
 check() {
