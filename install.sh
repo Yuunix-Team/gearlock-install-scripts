@@ -54,6 +54,9 @@ machine_info() {
 	# more in4 on os: ram, storage
 	
 	ram=$(free -h | grep Mem | awk '{print $2}')
+	case "$ram" in
+	*M) [ "${ram%.*}" -lt 512 ] && warn "This device is not intended to run Android"
+	esac
 }
 
 # shellcheck disable=SC2317
@@ -213,8 +216,26 @@ build() {
 prepare() {
 	# get the file from $GLRP_BIN_SRC
 	# or build one
-	echo
-	build
+	if [ -f "gearlock.img" ]; then
+		read -r -n 1 -p "Gearlock image already exists, make new? [y/N]: "
+		case "$REPLY" in
+		y|Y) ;;
+		*) return 0 ;;
+		esac
+	fi
+	if [ "$BUILD_GLRP" ]; then
+		build || die "Cannot build gearlock image"
+		return $?
+	fi
+	if which curl >/dev/null; then
+		curl -L "$GLRP_BIN_SRC" -o gearlock.img
+	elif which wget >/dev/null; then
+		wget -q "$GLRP_BIN_SRC" -O gearlock.img
+	else
+		false
+	fi ||
+		die "Cannot fetch gearlock image"
+	return $?
 }
 
 chroot_add_mount() { mountpoint -q "$2" || mount "$@"; }
@@ -257,8 +278,9 @@ main() {
 	setup_gearlock
 }
 
-while getopts "hwq" opt; do
+while getopts "bhwq" opt; do
 	case "$opt" in
+	b) BUILD_GLRP=true ;;
 	h) usage 0 ;;
 	w) SUPRESS_WARN=true ;;
 	q) QUIET=true ;;
